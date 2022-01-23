@@ -11,9 +11,22 @@ module.exports = {
     );
 
     const { usd } = data.market_data.current_price;
+    const { price_change_percentage_24h, price_change_percentage_7d } = data.market_data;
 
-    console.log(usd);
+    const formattedPercentageChange = price_change_percentage_24h.toFixed(2);
+    const formattedPercentageChange7d = price_change_percentage_7d.toFixed(2);
 
-    return interaction.reply(`Current price: $${usd}`);
+    const parsedPercentageChangeString = price_change_percentage_24h >= 0 ?
+     `${formattedPercentageChange}% 📈`
+      : `${formattedPercentageChange}% 📉`;
+    const parsedPercentageChange7dString = price_change_percentage_7d >= 0 ?
+     `${formattedPercentageChange7d}% 📈`
+      : `${formattedPercentageChange7d}% 📉`;
+
+    return interaction.reply(
+      `Current price: $${usd}\n` +
+      `Price change 24 hours: ${parsedPercentageChangeString}\n` +
+      `Price change 7 days: ${parsedPercentageChange7dString}`
+    );
   },
 };
