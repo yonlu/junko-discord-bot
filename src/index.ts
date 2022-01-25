@@ -1,15 +1,11 @@
+/* eslint @typescript-eslint/no-var-requires: "off" */
+import 'reflect-metadata';
+import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import { IInteraction } from './types';
+import { Client, Collection, Intents } from 'discord.js';
 
-const result = require('dotenv').config({
-  path: path.resolve(__dirname, '../.env'),
-  debug: process.env.DEBUG,
-});
-
-const { Client, Collection, Intents, Interaction } = require('discord.js');
-
-if (result.error) throw result.error;
+import { token } from './config.json';
 
 const client = new Client({ intents: [Intents.FLAGS.GUILDS] });
 
@@ -20,16 +16,14 @@ const commandFiles = fs
 
 for (const file of commandFiles) {
   const command = require(`./commands/${file}`);
-  // Set a new item in the Collection
-  // With the key as the command name and the value as the exported module
-  client.commands.set(command.data.name, command);
+  client.commands.set(command.commandData.name, command);
 }
 
 client.once('ready', () => {
-  console.log('Pupupupu ready!');
+  console.log('Ready!');
 });
 
-client.on('interactionCreate', async (interaction: IInteraction) => {
+client.on('interactionCreate', async (interaction) => {
   if (!interaction.isCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
@@ -38,13 +32,14 @@ client.on('interactionCreate', async (interaction: IInteraction) => {
 
   try {
     await command.execute(interaction);
-  } catch (error) {
+  }
+  catch (error) {
     console.error(error);
-    await interaction.reply({
+    return interaction.reply({
       content: 'There was an error while executing this command!',
       ephemeral: true,
     });
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(token);
