@@ -7,37 +7,51 @@
 //! features = ["client", "standard_framework", "voice"]
 //! ```
 use std::env;
+use std::sync::Arc;
 
 // This trait adds the `register_songbird` and `register_songbird_with` methods
 // to the client builder below, making it easy to install this voice client.
 // The voice client can be retrieved in any command using `songbird::get(ctx).await`.
-use songbird::SerenityInit;
+use songbird::{
+    input:: {
+        restartable::Restartable
+    },
+    Event,
+    EventContext,
+    EventHandler as VoiceEventHandler,
+    SerenityInit,
+    TrackEvent,
+};
 
 // Import the `Context` to handle commands.
-use serenity::client::Context;
-
 use serenity::{
     async_trait,
-    client::{Client, EventHandler},
+    client::{Client, Context, EventHandler},
     framework::{
-        StandardFramework,
         standard::{
-            Args, CommandResult,
             macros::{command, group},
+            Args,
+            CommandResult,
         },
+        StandardFramework,
     },
-    model::{channel::Message},
-    prelude::GatewayIntents,
+    http::Http,
+    model::{channel::Message, gateway::Ready, prelude::ChannelId},
+    prelude::{GatewayIntents},
     Result as SerenityResult,
 };
 #[group]
-#[commands(ping, join, leave, play)]
+#[commands(ping, join, leave, play, skip, list)]
 struct General;
 
 struct Handler;
 
 #[async_trait]
-impl EventHandler for Handler {}
+impl EventHandler for Handler {
+    async fn ready(&self, _: Context, ready: Ready) {
+        println!("{} is connected!", ready.user.name);
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -120,33 +134,54 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+/// Checks that a message successfully sent; if not, then logs why to stdout.
+fn check_msg(result: SerenityResult<Message>) {
+    if let Err(why) = result {
+        println!("Error sending message: {:?}", why);
+    }
+}
+
 #[command]
 #[only_in(guilds)]
 async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let url = match args.single::<String>() {
         Ok(url) => url,
         Err(_) => {
-            check_msg(msg.channel_id.say(&ctx.http, "Must provide a URL to a video or audio").await);
+            check_msg(
+                msg.channel_id
+                    .say(&ctx.http, "Must provide a URL to a video or audio")
+                    .await,
+            );
 
-            return Ok(())
+            return Ok(());
         },
     };
 
     if !url.starts_with("http") {
-        check_msg(msg.channel_id.say(&ctx.http, "Must provide a valid URL").await);
+        check_msg(
+            msg.channel_id
+                .say(&ctx.http, "Must provide a valid URL")
+                .await
+        );
+
         return Ok(());
     }
 
     let guild = msg.guild(&ctx.cache).unwrap();
     let guild_id = guild.id;
 
-    let manager = songbird::get(ctx).await
-        .expect("Songbird Voice client placed in at initialisation").clone();
+
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation")
+        .clone();
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
-        let source = match songbird::ytdl(&url).await {
+        // Here, we use lazy restartable sources to make sure that we don't pay
+        // for decoding, playback on tracks which aren't actually live yet.
+        let source = match Restartable::ytdl(url, true).await {
             Ok(source) => source,
             Err(why) => {
                 println!("Err starting source: {:?}", why);
@@ -154,22 +189,149 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
 
                 return Ok(());
-            }
+            },
         };
 
-        handler.play_source(source);
+        let song = handler.enqueue_source(source.into());
+        let send_http = ctx.http.clone();
+        let chan_id = msg.channel_id;
 
-        check_msg(msg.channel_id.say(&ctx.http, "Playing song").await);
+        let _ = song.add_event(
+            Event::Track(TrackEvent::End),
+            SongEndNotifier {
+                chan_id,
+                http: send_http,
+            },
+        );
+
+        check_msg(
+            msg.channel_id
+                .say(
+                    &ctx.http,
+                    format!("Added song to queue: position {}", handler.queue().len()),
+                )
+                .await,
+        );
     } else {
-        check_msg(msg.channel_id.say(&ctx.http, "Not in a voice channel to play in").await);
+        check_msg(
+            msg.channel_id
+                .say(&ctx.http, "Not in a voice channel to play in")
+                .await,
+        ); 
     }
 
     Ok(())
 }
 
-/// Checks that a message successfully sent; if not, then logs why to stdout.
-fn check_msg(result: SerenityResult<Message>) {
-    if let Err(why) = result {
-        println!("Error sending message: {:?}", why);
+#[command]
+#[only_in(guilds)]
+async fn skip(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation.")
+        .clone();
+
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let handler = handler_lock.lock().await;
+        let queue = handler.queue();
+        let _ = queue.skip();
+
+        check_msg(
+            msg.channel_id
+                .say(
+                    &ctx.http,
+                    format!("Song skipped: {} in queue.", queue.len()),
+                )
+                .await,
+        );
+    } else {
+        check_msg(
+            msg.channel_id
+                .say(&ctx.http, "Not in a voice channel to play in")
+                .await,
+        );
+    }
+
+    Ok(())
+}
+
+#[command]
+#[only_in(guilds)]
+async fn list(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation.")
+        .clone();
+
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let handler = handler_lock.lock().await;
+        let queue = handler.queue();
+
+        let queue_str = queue
+            .current_queue();
+
+        println!("{:?}", queue_str);
+
+
+        check_msg(
+            msg.channel_id
+                .say(
+                    &ctx.http,
+                    format!("Song List in queue printed to stdout, check your console."),
+                )
+                .await,
+        );
+    } else {
+        check_msg(
+            msg.channel_id
+                .say(&ctx.http, "Not in a voice channel to play in")
+                .await,
+        );
+    }
+
+    Ok(())
+}
+
+struct TrackEndNotifier {
+    chan_id: ChannelId,
+    http: Arc<Http>,
+}
+
+#[async_trait]
+impl VoiceEventHandler for TrackEndNotifier {
+    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        if let EventContext::Track(track_list) = ctx {
+            check_msg(
+                self.chan_id
+                    .say(&self.http, &format!("Tracks ended: {}.", track_list.len()))
+                    .await,
+            );
+        }
+
+        None
+    }
+}
+
+struct SongEndNotifier {
+    chan_id: ChannelId,
+    http: Arc<Http>,
+}
+
+#[async_trait]
+impl VoiceEventHandler for SongEndNotifier {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        check_msg(
+            self.chan_id
+                .say(&self.http, "Song finished playing!")
+                .await
+        );
+
+        None
     }
 }
