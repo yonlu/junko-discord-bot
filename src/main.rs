@@ -9,13 +9,13 @@
 use std::env;
 use std::sync::Arc;
 
+use reqwest::header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::Client as RequestClient;
 // This trait adds the `register_songbird` and `register_songbird_with` methods
 // to the client builder below, making it easy to install this voice client.
 // The voice client can be retrieved in any command using `songbird::get(ctx).await`.
 use songbird::{
-    input:: {
-        restartable::Restartable
-    },
+    input::restartable::Restartable,
     Event,
     EventContext,
     EventHandler as VoiceEventHandler,
@@ -37,11 +37,13 @@ use serenity::{
     },
     http::Http,
     model::{channel::Message, gateway::Ready, prelude::ChannelId},
-    prelude::{GatewayIntents},
+    prelude::GatewayIntents,
     Result as SerenityResult,
 };
+use serde::{Serialize, Deserialize};
+
 #[group]
-#[commands(ping, join, leave, play, skip, list)]
+#[commands(ping, join, leave, play, skip, list, ask)]
 struct General;
 
 struct Handler;
@@ -59,6 +61,7 @@ async fn main() {
         .configure(|c| c.prefix("~"))
         .group(&GENERAL_GROUP);
 
+    env::set_var("RUST_BACKTRACE", "1");
     // Login with a bot token from the environment
     let token = env::var("DISCORD_TOKEN").expect("token");
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
@@ -294,6 +297,100 @@ async fn list(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
                 .await,
         );
     }
+
+    Ok(())
+}
+
+#[derive(Serialize, Debug)]
+struct ChatCompletionRequest {
+    model: String,
+    messages: Vec<ChatMessage>
+}
+
+#[derive(Serialize, Debug)]
+struct ChatMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct ChatCompletionResponse {
+    id: String,
+    object: String,
+    created: u64,
+    model: String, 
+    usage: ChatCompletionUsage,
+    choices: Vec<ChatCompletionChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatCompletionUsage {
+    prompt_tokens: u64,
+    completion_tokens: u64,
+    total_tokens: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatCompletionChoice {
+    message: ChatResponseMessage,
+    finish_reason: Option<String>,
+    index: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatResponseMessage {
+    role: String,
+    content: String,
+}
+
+#[command]
+#[only_in(guilds)]
+async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    let prompt = args.rest();
+
+    check_msg(
+        msg.channel_id
+            .say(
+                &ctx.http,
+                format!("Command acknowledged! Prompt: {:?}", prompt),
+            )
+            .await,
+    );
+
+    let api_key = env::var("OPENAI_API_KEY").expect("token");
+
+    let request_body = ChatCompletionRequest {
+        model: "gpt-3.5-turbo".to_string(),
+        messages: vec![
+            ChatMessage {
+                role: "user".to_string(),
+                content: prompt.to_string(),
+            }
+        ],
+    };
+
+    // Create request headers
+    let mut headers = HeaderMap::new();
+    headers.insert(AUTHORIZATION, format!("Bearer {}", api_key).parse().unwrap());
+    headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
+
+    let response = RequestClient::new()
+        .post("https://api.openai.com/v1/chat/completions")
+        .headers(headers)
+        .json(&request_body)
+        .send()
+        .await?
+        .json::<ChatCompletionResponse>().await?;
+
+    let result = &response.choices[0].message.content;
+
+    println!("Answer: {:?}", result);
+
+    check_msg(
+        msg.channel_id
+            .say(&ctx.http, result)
+            .await,
+    );
 
     Ok(())
 }

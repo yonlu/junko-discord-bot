@@ -11,3 +11,6 @@ songbird = { version = "0.3.0", features = ["yt-dlp", "builtin-queue"] }
 tokio = { version = "1.21.2", features = ["full"] }
 youtube_dl = "0.8.0"
 futures = "0.3.17"
+reqwest = { version = "0.11", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
