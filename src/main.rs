@@ -7,10 +7,12 @@
 //! features = ["client", "standard_framework", "voice"]
 //! ```
 use std::env;
+use std::fs::File;
 use std::sync::Arc;
+use std::io::Write;
 
 use reqwest::header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE};
-use reqwest::Client as RequestClient;
+use reqwest::{Client as RequestClient, StatusCode};
 // This trait adds the `register_songbird` and `register_songbird_with` methods
 // to the client builder below, making it easy to install this voice client.
 // The voice client can be retrieved in any command using `songbird::get(ctx).await`.
@@ -43,7 +45,7 @@ use serenity::{
 use serde::{Serialize, Deserialize};
 
 #[group]
-#[commands(ping, join, leave, play, skip, list, ask)]
+#[commands(ping, join, leave, play, skip, list, ask, tts)]
 struct General;
 
 struct Handler;
@@ -61,7 +63,7 @@ async fn main() {
         .configure(|c| c.prefix("~"))
         .group(&GENERAL_GROUP);
 
-    env::set_var("RUST_BACKTRACE", "1");
+    //env::set_var("RUST_BACKTRACE", "1");
     // Login with a bot token from the environment
     let token = env::var("DISCORD_TOKEN").expect("token");
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
@@ -392,8 +394,129 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             .await,
     );
 
+    // TODO make this into its own function
+    let speech_key  = env::var("SPEECH_KEY").expect("token");
+    let speech_region = env::var("SPEECH_REGION").expect("token");
+
+    let url = format!(
+        "https://{}.tts.speech.microsoft.com/cognitiveservices/v1",
+        speech_region
+    );
+
+    let client = RequestClient::new();
+    let response = client
+        .post(&url)
+        .header("Ocp-Apim-Subscription-Key", speech_key)
+        .header("Content-Type", "application/ssml+xml")
+        .header(
+            "X-Microsoft-OutputFormat",
+            "audio-16khz-128kbitrate-mono-mp3",
+        )
+        .header("User-Agent", "reqwest")
+        .body(format!(
+            r#"<speak version="1.0" xml:lang="en-US"><voice xml:lang="en-US" xml:gender="Female" name="en-US-AshleyNeural"><prosody rate="1.25" pitch="+56%">{}</prosody></voice></speak>"#,
+            result
+        ))
+        .send()
+        .await?;
+
+    match response.status() {
+        StatusCode::OK => {
+            let mut output_file = File::create("output.mp3")?;
+            let bytes = response.bytes().await?;
+            output_file.write_all(&bytes)?;
+            drop(output_file);
+
+            let guild_id = msg.guild_id.unwrap();
+            let manager = songbird::get(ctx).await
+                .expect("Songbird Voice client placed in initialisation.").clone();
+
+            if let Some(handler_lock) = manager.get(guild_id) {
+                let mut handler = handler_lock.lock().await;
+
+                let source = songbird::ffmpeg("./output.mp3").await.unwrap();
+                handler.play_source(source);
+            }
+        }
+        _ => {
+            check_msg(
+                msg.channel_id
+                    .say(&ctx.http, "Error synthesizing TTS")
+                    .await,
+            );
+        }
+    }
+
     Ok(())
 }
+
+#[command]
+async fn tts(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    let text = match args.rest().is_empty() {
+        true => {
+            check_msg(msg.channel_id.say(&ctx.http, "No text provided").await);
+            return Ok(());
+        }
+        false => args.rest(),
+    };
+
+
+    // TODO make this into its own function
+    let speech_key  = env::var("SPEECH_KEY").expect("token");
+    let speech_region = env::var("SPEECH_REGION").expect("token");
+
+    let url = format!(
+        "https://{}.tts.speech.microsoft.com/cognitiveservices/v1",
+        speech_region
+    );
+
+    let client = RequestClient::new();
+    let response = client
+        .post(&url)
+        .header("Ocp-Apim-Subscription-Key", speech_key)
+        .header("Content-Type", "application/ssml+xml")
+        .header(
+            "X-Microsoft-OutputFormat",
+            "audio-16khz-128kbitrate-mono-mp3",
+        )
+        .header("User-Agent", "reqwest")
+        .body(format!(
+            r#"<speak version="1.0" xml:lang="en-US"><voice xml:lang="en-US" xml:gender="Female" name="en-US-AshleyNeural"><prosody rate="1.25" pitch="+56%">{}</prosody></voice></speak>"#,
+            text
+        ))
+        .send()
+        .await?;
+
+    match response.status() {
+        StatusCode::OK => {
+            let mut output_file = File::create("output.mp3")?;
+            let bytes = response.bytes().await?;
+            output_file.write_all(&bytes)?;
+            drop(output_file);
+
+            let guild_id = msg.guild_id.unwrap();
+            let manager = songbird::get(ctx).await
+                .expect("Songbird Voice client placed in initialisation.").clone();
+
+            if let Some(handler_lock) = manager.get(guild_id) {
+                let mut handler = handler_lock.lock().await;
+
+                let source = songbird::ffmpeg("./output.mp3").await.unwrap();
+                handler.play_source(source);
+            }
+        }
+        _ => {
+            check_msg(
+                msg.channel_id
+                    .say(&ctx.http, "Error synthesizing TTS")
+                    .await,
+            );
+        }
+    }
+
+    Ok(())
+}
+
 
 struct TrackEndNotifier {
     chan_id: ChannelId,
