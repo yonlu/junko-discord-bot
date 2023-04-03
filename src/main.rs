@@ -1,11 +1,4 @@
-//! Requires the "client", "standard_framework", and "voice" features be enabled in your
-//! Cargo.toml, like so:
-//!
-//! ```toml
-//! [dependencies.serenity]
-//! git = "https://github.com/serenity-rs/serenity.git"
-//! features = ["client", "standard_framework", "voice"]
-//! ```
+mod utils;
 use std::env;
 use std::fs::File;
 use std::sync::Arc;
@@ -13,9 +6,6 @@ use std::io::Write;
 
 use reqwest::header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::{Client as RequestClient, StatusCode};
-// This trait adds the `register_songbird` and `register_songbird_with` methods
-// to the client builder below, making it easy to install this voice client.
-// The voice client can be retrieved in any command using `songbird::get(ctx).await`.
 use songbird::{
     input::restartable::Restartable,
     Event,
@@ -40,7 +30,6 @@ use serenity::{
     http::Http,
     model::{channel::Message, gateway::Ready, prelude::ChannelId},
     prelude::GatewayIntents,
-    Result as SerenityResult,
 };
 use serde::{Serialize, Deserialize};
 
@@ -103,7 +92,7 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
     let connect_to = match channel_id {
         Some(channel) => channel,
         None => {
-            check_msg(msg.reply(ctx, "Not in a voice channel").await);
+            utils::check_msg(msg.reply(ctx, "Not in a voice channel").await);
             return Ok(())
         }
     };
@@ -128,22 +117,15 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 
     if has_handler {
         if let Err(e) = manager.remove(guild_id).await {
-            check_msg(msg.channel_id.say(&ctx.http, format!("Failed: {:?}", e)).await);
+            utils::check_msg(msg.channel_id.say(&ctx.http, format!("Failed: {:?}", e)).await);
         }
 
-        check_msg(msg.channel_id.say(&ctx.http, "Left voice channel").await);
+        utils::check_msg(msg.channel_id.say(&ctx.http, "Left voice channel").await);
     } else {
-        check_msg(msg.reply(ctx, "Not in a voice channel").await);
+        utils::check_msg(msg.reply(ctx, "Not in a voice channel").await);
     }
 
     Ok(())
-}
-
-/// Checks that a message successfully sent; if not, then logs why to stdout.
-fn check_msg(result: SerenityResult<Message>) {
-    if let Err(why) = result {
-        println!("Error sending message: {:?}", why);
-    }
 }
 
 #[command]
@@ -152,7 +134,7 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let url = match args.single::<String>() {
         Ok(url) => url,
         Err(_) => {
-            check_msg(
+            utils::check_msg(
                 msg.channel_id
                     .say(&ctx.http, "Must provide a URL to a video or audio")
                     .await,
@@ -163,7 +145,7 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     };
 
     if !url.starts_with("http") {
-        check_msg(
+        utils::check_msg(
             msg.channel_id
                 .say(&ctx.http, "Must provide a valid URL")
                 .await
@@ -191,7 +173,7 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             Err(why) => {
                 println!("Err starting source: {:?}", why);
 
-                check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
+                utils::check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
 
                 return Ok(());
             },
@@ -209,7 +191,7 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             },
         );
 
-        check_msg(
+        utils::check_msg(
             msg.channel_id
                 .say(
                     &ctx.http,
@@ -218,7 +200,7 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 .await,
         );
     } else {
-        check_msg(
+        utils::check_msg(
             msg.channel_id
                 .say(&ctx.http, "Not in a voice channel to play in")
                 .await,
@@ -244,7 +226,7 @@ async fn skip(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
         let queue = handler.queue();
         let _ = queue.skip();
 
-        check_msg(
+        utils::check_msg(
             msg.channel_id
                 .say(
                     &ctx.http,
@@ -253,7 +235,7 @@ async fn skip(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
                 .await,
         );
     } else {
-        check_msg(
+        utils::check_msg(
             msg.channel_id
                 .say(&ctx.http, "Not in a voice channel to play in")
                 .await,
@@ -284,7 +266,7 @@ async fn list(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
         println!("{:?}", queue_str);
 
 
-        check_msg(
+        utils::check_msg(
             msg.channel_id
                 .say(
                     &ctx.http,
@@ -293,7 +275,7 @@ async fn list(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
                 .await,
         );
     } else {
-        check_msg(
+        utils::check_msg(
             msg.channel_id
                 .say(&ctx.http, "Not in a voice channel to play in")
                 .await,
@@ -335,13 +317,10 @@ struct ChatCompletionUsage {
 #[derive(Debug, Deserialize)]
 struct ChatCompletionChoice {
     message: ChatResponseMessage,
-    finish_reason: Option<String>,
-    index: usize,
 }
 
 #[derive(Debug, Deserialize)]
 struct ChatResponseMessage {
-    role: String,
     content: String,
 }
 
@@ -350,7 +329,7 @@ struct ChatResponseMessage {
 async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let prompt = args.rest();
 
-    check_msg(
+    utils::check_msg(
         msg.channel_id
             .say(
                 &ctx.http,
@@ -388,7 +367,7 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 
     println!("Answer: {:?}", result);
 
-    check_msg(
+    utils::check_msg(
         msg.channel_id
             .say(&ctx.http, result)
             .await,
@@ -414,7 +393,7 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         )
         .header("User-Agent", "reqwest")
         .body(format!(
-            r#"<speak version="1.0" xml:lang="en-US"><voice xml:lang="en-US" xml:gender="Female" name="en-US-AshleyNeural"><prosody rate="1.25" pitch="+56%">{}</prosody></voice></speak>"#,
+            r#"<speak version="1.0" xml:lang="en-US"><voice xml:lang="en-US" xml:gender="Female" name="en-US-AshleyNeural"><prosody rate="1.00" pitch="+1%">{}</prosody></voice></speak>"#,
             result
         ))
         .send()
@@ -439,7 +418,7 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             }
         }
         _ => {
-            check_msg(
+            utils::check_msg(
                 msg.channel_id
                     .say(&ctx.http, "Error synthesizing TTS")
                     .await,
@@ -454,7 +433,7 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 async fn tts(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let text = match args.rest().is_empty() {
         true => {
-            check_msg(msg.channel_id.say(&ctx.http, "No text provided").await);
+            utils::check_msg(msg.channel_id.say(&ctx.http, "No text provided").await);
             return Ok(());
         }
         false => args.rest(),
@@ -481,7 +460,7 @@ async fn tts(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         )
         .header("User-Agent", "reqwest")
         .body(format!(
-            r#"<speak version="1.0" xml:lang="en-US"><voice xml:lang="en-US" xml:gender="Female" name="en-US-AshleyNeural"><prosody rate="1.25" pitch="+56%">{}</prosody></voice></speak>"#,
+            r#"<speak version="1.0" xml:lang="en-US"><voice xml:lang="en-US" xml:gender="Female" name="en-US-AshleyNeural"><prosody rate="1.00" pitch="+1%">{}</prosody></voice></speak>"#,
             text
         ))
         .send()
@@ -506,7 +485,7 @@ async fn tts(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             }
         }
         _ => {
-            check_msg(
+            utils::check_msg(
                 msg.channel_id
                     .say(&ctx.http, "Error synthesizing TTS")
                     .await,
@@ -527,7 +506,7 @@ struct TrackEndNotifier {
 impl VoiceEventHandler for TrackEndNotifier {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         if let EventContext::Track(track_list) = ctx {
-            check_msg(
+            utils::check_msg(
                 self.chan_id
                     .say(&self.http, &format!("Tracks ended: {}.", track_list.len()))
                     .await,
@@ -546,7 +525,7 @@ struct SongEndNotifier {
 #[async_trait]
 impl VoiceEventHandler for SongEndNotifier {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        check_msg(
+        utils::check_msg(
             self.chan_id
                 .say(&self.http, "Song finished playing!")
                 .await
