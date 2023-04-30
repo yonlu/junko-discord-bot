@@ -55,7 +55,7 @@ async fn main() {
     //env::set_var("RUST_BACKTRACE", "1");
     // Login with a bot token from the environment
     let token = env::var("DISCORD_TOKEN").expect("token");
-    let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT | GatewayIntents::GUILD_VOICE_STATES;
 
     let mut client = Client::builder(token, intents)
         .event_handler(Handler)
@@ -329,23 +329,18 @@ struct ChatResponseMessage {
 async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let prompt = args.rest();
 
-    utils::check_msg(
-        msg.channel_id
-            .say(
-                &ctx.http,
-                format!("Command acknowledged! Prompt: {:?}", prompt),
-            )
-            .await,
-    );
-
     let api_key = env::var("OPENAI_API_KEY").expect("token");
+
+    let junko_partial_prompt = "Without repeating the same question, respond in less than 70 characters as Junko Enoshima from Danganronpa series, and do not mention 'OpenAI', 'ChatGPT' or 'AI language model', do not use quotations, and do not use hashtags: ".to_owned();
+
+    let full_prompt = [junko_partial_prompt, prompt.to_string()].join("\n");
 
     let request_body = ChatCompletionRequest {
         model: "gpt-3.5-turbo".to_string(),
         messages: vec![
             ChatMessage {
                 role: "user".to_string(),
-                content: prompt.to_string(),
+                content: full_prompt,
             }
         ],
     };
@@ -383,26 +378,45 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     );
 
     let client = RequestClient::new();
+
     let response = client
-        .post(&url)
-        .header("Ocp-Apim-Subscription-Key", speech_key)
-        .header("Content-Type", "application/ssml+xml")
-        .header(
-            "X-Microsoft-OutputFormat",
-            "audio-16khz-128kbitrate-mono-mp3",
-        )
-        .header("User-Agent", "reqwest")
-        .body(format!(
-            r#"<speak version="1.0" xml:lang="en-US"><voice xml:lang="en-US" xml:gender="Female" name="en-US-AshleyNeural"><prosody rate="1.00" pitch="+1%">{}</prosody></voice></speak>"#,
-            result
-        ))
-        .send()
-        .await?;
+    .post(&url)
+    .header("Ocp-Apim-Subscription-Key", speech_key)
+    .header("Content-Type", "application/ssml+xml")
+    .header(
+        "X-Microsoft-OutputFormat",
+        "audio-16khz-128kbitrate-mono-mp3",
+    )
+    .header("User-Agent", "reqwest")
+    .body(format!(
+        r#"<speak version="1.0" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="pt-BR"><voice xml:lang="pt-BR" xml:gender="Female" name="pt-BR-FranciscaNeural"><mstts:express-as type="cheerful">{}</mstts:express-as></voice></speak>"#,
+        result
+    ))
+    .send()
+    .await?;
+
+    // let response = client
+    //     .post(&url)
+    //     .header("Ocp-Apim-Subscription-Key", speech_key)
+    //     .header("Content-Type", "application/ssml+xml")
+    //     .header(
+    //         "X-Microsoft-OutputFormat",
+    //         "audio-16khz-128kbitrate-mono-mp3",
+    //     )
+    //     .header("User-Agent", "reqwest")
+    //     .body(format!(
+    //         r#"<speak version="1.0" xml:lang="en-US"><voice xml:lang="en-US" xml:gender="Female" name="en-US-AshleyNeural"><prosody rate="1.00" pitch="+1%">{}</prosody></voice></speak>"#,
+    //         result
+    //     ))
+    //     .send()
+    //     .await?;
 
     match response.status() {
         StatusCode::OK => {
             let mut output_file = File::create("output.mp3")?;
+            println!("Output file created: output.mp3");
             let bytes = response.bytes().await?;
+            println!("TTS response length: {}", bytes.len());
             output_file.write_all(&bytes)?;
             drop(output_file);
 
@@ -414,10 +428,14 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
                 let mut handler = handler_lock.lock().await;
 
                 let source = songbird::ffmpeg("./output.mp3").await.unwrap();
+                println!("Playing output.mp3 in the voice channel");
                 handler.play_source(source);
+            } else {
+                println!("No handler found for the guild");
             }
         }
         _ => {
+            println!("Error synthesizing TTS: {:?}", response);
             utils::check_msg(
                 msg.channel_id
                     .say(&ctx.http, "Error synthesizing TTS")
@@ -477,11 +495,40 @@ async fn tts(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             let manager = songbird::get(ctx).await
                 .expect("Songbird Voice client placed in initialisation.").clone();
 
+            // if let Some(handler_lock) = manager.get(guild_id) {
+            //     let mut handler = handler_lock.lock().await;
+            //
+            //     let source = songbird::ffmpeg("./output.mp3").await.unwrap();
+            //     handler.play_source(source);
+            // }
+            
             if let Some(handler_lock) = manager.get(guild_id) {
                 let mut handler = handler_lock.lock().await;
 
-                let source = songbird::ffmpeg("./output.mp3").await.unwrap();
-                handler.play_source(source);
+                match songbird::ffmpeg("./output.mp3").await {
+                    Ok(source) => {
+                        println!("Playing output.mp3 in the voice channel");
+                        let track_handle = handler.play_source(source.into());
+                        if let Err(e) = track_handle.play() {
+                            println!("Error during playback: {:?}", e);
+                        }
+                    }
+                    Err(e) => {
+                        println!("Error playing output.mp3: {:?}", e);
+                        utils::check_msg(
+                            msg.channel_id
+                                .say(&ctx.http, "Error playing audio in the voice channel")
+                                .await,
+                        );
+                    }
+                }
+            } else {
+                println!("No handler found for the guild");
+                utils::check_msg(
+                    msg.channel_id
+                        .say(&ctx.http, "The bot is not connected to a voice channel")
+                        .await,
+                );
             }
         }
         _ => {
