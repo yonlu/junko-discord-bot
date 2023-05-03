@@ -7,10 +7,16 @@ edition = "2021"
 
 [dependencies]
 serenity = { version = "0.11", features = ["client", "standard_framework", "voice", "cache"]}
-songbird = { version = "0.3.0", features = ["yt-dlp", "builtin-queue"] }
+#songbird = { version = "0.3.0", features = ["yt-dlp", "builtin-queue"] }
 tokio = { version = "1.21.2", features = ["full"] }
 youtube_dl = "0.8.0"
 futures = "0.3.17"
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+lazy_static = "1.4.0"
+
+[dependencies.songbird]
+features = ["builtin-queue"]
+git = "https://github.com/Erk-/songbird/"
+branch = "do-not-fail-if-new-opcode"
