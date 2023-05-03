@@ -1,5 +1,6 @@
 mod utils;
 use std::env;
+use std::collections::HashMap;
 use std::fs::File;
 use std::sync::Arc;
 use std::io::Write;
@@ -32,6 +33,13 @@ use serenity::{
     prelude::GatewayIntents,
 };
 use serde::{Serialize, Deserialize};
+use lazy_static::lazy_static;
+use tokio::sync::Mutex;
+
+type ConversationHistory = Vec<ChatMessage>;
+lazy_static! {
+    static ref CONVERSATIONS: Mutex<HashMap<ChannelId, ConversationHistory>> = Mutex::new(HashMap::new());
+}
 
 #[group]
 #[commands(ping, join, leave, play, skip, list, ask, tts)]
@@ -291,7 +299,7 @@ struct ChatCompletionRequest {
     messages: Vec<ChatMessage>
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 struct ChatMessage {
     role: String,
     content: String,
@@ -331,18 +339,26 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 
     let api_key = env::var("OPENAI_API_KEY").expect("token");
 
-    let junko_partial_prompt = "Without repeating the same question, respond in less than 70 characters as Junko Enoshima from Danganronpa series, and do not mention 'OpenAI', 'ChatGPT' or 'AI language model', do not use quotations, and do not use hashtags: ".to_owned();
+    let junko_partial_prompt = "Without repeating the same question, respond in less than 70 characters as Junko Enoshima from Danganronpa series, and do not mention 'OpenAI', 'ChatGPT' or 'AI language model', do not use quotations, and answer in Brazilian Portuguese: ".to_owned();
 
     let full_prompt = [junko_partial_prompt, prompt.to_string()].join("\n");
 
+    println!("Full prompt: {:?}", full_prompt);
+
+    // Fetch the conversation history for this channel
+    let mut conversations = CONVERSATIONS.lock().await;
+    let channel_conversations = conversations.entry(msg.channel_id).or_insert(vec![]);
+
+    // Create a user message and add it to the conversation history
+    let user_message = ChatMessage {
+        role: "user".to_string(),
+        content: full_prompt.to_string(),
+    };
+    channel_conversations.push(user_message);
+
     let request_body = ChatCompletionRequest {
         model: "gpt-3.5-turbo".to_string(),
-        messages: vec![
-            ChatMessage {
-                role: "user".to_string(),
-                content: full_prompt,
-            }
-        ],
+        messages: channel_conversations.clone(),
     };
 
     // Create request headers
@@ -358,6 +374,8 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         .await?
         .json::<ChatCompletionResponse>().await?;
 
+    println!("OpenAI response: {:?}", response);
+
     let result = &response.choices[0].message.content;
 
     println!("Answer: {:?}", result);
@@ -367,6 +385,13 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             .say(&ctx.http, result)
             .await,
     );
+
+    // Update the conversation history with the AI's response
+    let ai_message = ChatMessage {
+        role: "assistant".to_string(),
+        content: result.to_string(),
+    };
+    channel_conversations.push(ai_message);
 
     // TODO make this into its own function
     let speech_key  = env::var("SPEECH_KEY").expect("token");
@@ -394,22 +419,6 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     ))
     .send()
     .await?;
-
-    // let response = client
-    //     .post(&url)
-    //     .header("Ocp-Apim-Subscription-Key", speech_key)
-    //     .header("Content-Type", "application/ssml+xml")
-    //     .header(
-    //         "X-Microsoft-OutputFormat",
-    //         "audio-16khz-128kbitrate-mono-mp3",
-    //     )
-    //     .header("User-Agent", "reqwest")
-    //     .body(format!(
-    //         r#"<speak version="1.0" xml:lang="en-US"><voice xml:lang="en-US" xml:gender="Female" name="en-US-AshleyNeural"><prosody rate="1.00" pitch="+1%">{}</prosody></voice></speak>"#,
-    //         result
-    //     ))
-    //     .send()
-    //     .await?;
 
     match response.status() {
         StatusCode::OK => {
