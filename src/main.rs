@@ -2,7 +2,7 @@ mod utils;
 use std::env;
 use std::collections::HashMap;
 use std::fs::File;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as SyncMutex};
 use std::io::Write;
 
 use reqwest::header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE};
@@ -35,14 +35,69 @@ use serenity::{
 use serde::{Serialize, Deserialize};
 use lazy_static::lazy_static;
 use tokio::sync::Mutex;
+use tokio::task::{spawn_blocking, self};
+use scraper;
 
 type ConversationHistory = Vec<ChatMessage>;
 lazy_static! {
     static ref CONVERSATIONS: Mutex<HashMap<ChannelId, ConversationHistory>> = Mutex::new(HashMap::new());
 }
 
+fn initialize_map() -> HashMap<String, i32> {
+    let mut map = HashMap::new();
+    map.insert("Balam".to_string(), 47);
+    map.insert("Apollyon".to_string(), 51);
+    map.insert("Orc Lord".to_string(), 35);
+    map.insert("Vesper".to_string(), 18);
+    map.insert("Stormy Knight".to_string(), 33);
+    map.insert("Gopinich".to_string(), 24);
+    map.insert("Dark Lord".to_string(), 11);
+    map.insert("Paimon".to_string(), 50);
+    map.insert("Golden Thief Bug".to_string(), 28);
+    map.insert("Evil Snake Lord".to_string(), 16);
+    map.insert("Orc Hero".to_string(), 36);
+    map.insert("Samurai Specter".to_string(), 4);
+    map.insert("Raum".to_string(), 49);
+    map.insert("Fallen Bishop Hibram".to_string(), 2);
+    map.insert("White Lady".to_string(), 21);
+    map.insert("Moonlight Flower".to_string(), 26);
+    map.insert("Shax".to_string(), 48);
+    map.insert("Dracula".to_string(), 9);
+    map.insert("Lord of the Dead".to_string(), 1);
+    map.insert("Baphomet".to_string(), 27);
+    map.insert("Pharaoh".to_string(), 17);
+    map.insert("Hatii".to_string(), 37);
+    map.insert("Eddga".to_string(), 41);
+    map.insert("Drake".to_string(), 31);
+    map.insert("Osiris".to_string(), 22);
+    map.insert("Phreeoni".to_string(), 39);
+    map.insert("Moonlight Flower".to_string(), 26);
+    map.insert("Maya".to_string(), 5);
+    map.insert("Kiel D-01".to_string(), 19);
+    map.insert("Samurai Specter".to_string(), 4);
+    map.insert("Doppelganger".to_string(), 10);
+    map.insert("Amon Ra".to_string(), 23);
+    map.insert("Tao Gunka".to_string(), 7);
+    map.insert("Atroce".to_string(), 44);
+    map.insert("Egnigem Cenia".to_string(), 20);
+    map.insert("Mistress".to_string(), 38);
+    map.insert("RSX-0806".to_string(), 8);
+    map.insert("Gloom Under Night".to_string(), 29);
+    map.insert("Lady Tanee".to_string(), 6);
+    map.insert("Valkyrie Randgris".to_string(), 25);
+    map.insert("Wounded Morocc".to_string(), 40);
+    map.insert("Ifrit".to_string(), 30);
+    map.insert("Detardeurus".to_string(), 3);
+    map.insert("Turtle General".to_string(), 32);
+    map
+}
+
+lazy_static! {
+    static ref MVP_TO_ID: SyncMutex<HashMap<String, i32>> = SyncMutex::new(initialize_map());
+}
+
 #[group]
-#[commands(ping, join, leave, play, skip, list, ask, tts)]
+#[commands(ping, join, leave, play, skip, list, ask, tts, mvp)]
 struct General;
 
 struct Handler;
@@ -83,6 +138,121 @@ async fn main() {
 #[command]
 async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
     msg.reply(ctx, "Pong!").await?;
+
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Timer {
+    id: String,
+    date: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct MVPCountdown {
+    enable: bool,
+    servertime: String,
+    offset: i64,
+    elements: Vec<Timer>
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct MVP {
+    name: String,
+    map: String,
+}
+
+#[command]
+async fn mvp(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.reply(ctx, "Ready to track MVPs!").await?;
+
+    let response = reqwest::get(
+        "http://www.uropk.com.br/?module=mvp",
+    )
+    .await?
+    .text()
+    .await?;
+
+
+    let mvps = task::spawn_blocking(|| MVP_TO_ID.lock().unwrap().clone()).await.unwrap();
+
+    let mvp_vec = task::spawn_blocking(move || {
+        let response_clone = response.clone();
+        let document = scraper::Html::parse_document(&response_clone);
+
+        let table_selector = scraper::Selector::parse("table > tbody > tr").unwrap();
+        let td_selector = scraper::Selector::parse("td").unwrap();
+
+        let script_selector = scraper::Selector::parse(".table-responsive + script").unwrap();
+        let script_tag = document
+            .select(&script_selector)
+            .next()
+            .unwrap();
+        let script_content = script_tag.text().collect::<String>();
+        println!("Script content: {}", script_content);
+
+        let js_object_start = script_content.find("{").unwrap();
+        let js_object_end = script_content.rfind("}").unwrap() + 1;
+        let js_object_str = &script_content[js_object_start..js_object_end];
+
+        let json_object_str = js_object_str.replace("'", "\"");
+
+        let mut parsed_object: Result<MVPCountdown, _> = serde_json::from_str(&json_object_str);
+
+        let timers = parsed_object.unwrap().elements;
+
+        timers.iter()
+            .for_each(|timer| println!("{:?}", timer));
+
+        let foo = timers.iter().find(|timer| timer.id == mvps.get("Shax").unwrap().to_string());
+
+        println!("Shax timer: {}", foo.unwrap().date);
+
+        // match parsed_object {
+        //     Ok(obj) => println!("Parsed object: {:?}", obj),
+        //     Err(err) => println!("Error: {:?}", err),
+        // }
+
+        let mvp_table = document.select(&table_selector);
+        let mut tmp_mvp_vec = vec![];
+
+        for row in mvp_table {
+            let desired_tds = row
+                .select(&td_selector)
+                .take(1)
+                .flat_map(|el| el.text())
+                .filter(|text| !text.contains("\n") && !text.contains("\t"))
+                .collect::<Vec<_>>();
+
+            desired_tds.iter()
+                .for_each(|x| println!("Desired TD: {}", x));
+
+            // let mvp_respawn = timers.iter().find(|timer| timer.id == mvps.get(&desired_tds[0].to_string()).unwrap().to_string());
+
+            let mvp = MVP {
+                name: String::from(desired_tds[0]),
+                map: String::from(desired_tds[4]),
+            };
+
+            tmp_mvp_vec.push(mvp);
+            println!("Elements: {:?}", desired_tds);
+        }
+
+        tmp_mvp_vec
+    })
+    .await
+    .unwrap();
+
+
+
+    let mvp_lines = mvp_vec.iter()
+        .take(3)
+        .map(|mvp| format!("{} \t {} \t", mvp.name, mvp.map))
+        .collect::<Vec<_>>();
+
+    let mvp_string = mvp_lines.join("\n");
+
+    utils::check_msg(msg.channel_id.say(&ctx.http, mvp_string).await);
 
     Ok(())
 }
