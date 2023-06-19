@@ -19,6 +19,6 @@ scraper = "0.12.0"
 select = "0.6.0"
 
 [dependencies.songbird]
-features = ["builtin-queue"]
+features = ["yt-dlp", "builtin-queue"]
 git = "https://github.com/Erk-/songbird/"
 branch = "do-not-fail-if-new-opcode"
