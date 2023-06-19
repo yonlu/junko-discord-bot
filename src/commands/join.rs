@@ -1,10 +1,10 @@
-// Import the `Context` to handle commands.
+use serenity::framework::standard::CommandResult;
+use serenity::prelude::Context;
 use serenity::{
     Result as SerenityResult,
     model::channel::Message,
 };
 use serenity::builder::CreateApplicationCommand;
-use serenity::model::prelude::interaction::application_command::CommandDataOption;
 
 async fn run(ctx: &Context, msg: &Message) -> CommandResult {
     let guild = msg.guild(&ctx.cache).unwrap();
