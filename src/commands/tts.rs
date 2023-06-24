@@ -1,4 +1,3 @@
-use crate::utils::check_msg;
 use std::env;
 use std::fs::File;
 use std::io::Write;
@@ -14,6 +13,8 @@ use serenity::{
         },
     model::channel::Message,
 };
+
+use crate::utils::check_msg;
 
 #[command]
 pub async fn tts(ctx: &Context, msg: &Message, args: Args) -> CommandResult {

@@ -1,6 +1,8 @@
 mod commands;
 mod utils;
 
+use crate::commands::join::*;
+use crate::commands::leave::*;
 use crate::commands::mvp::*;
 use crate::commands::tts::*;
 
@@ -8,7 +10,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::Write;
-use std::sync::{Arc, Mutex as SyncMutex};
+use std::sync::Arc;
 
 use reqwest::header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::{Client as RequestClient, StatusCode};
@@ -40,57 +42,6 @@ type ConversationHistory = Vec<ChatMessage>;
 lazy_static! {
     static ref CONVERSATIONS: Mutex<HashMap<ChannelId, ConversationHistory>> =
         Mutex::new(HashMap::new());
-}
-
-fn initialize_map() -> HashMap<String, i32> {
-    let mut map = HashMap::new();
-    map.insert("Lord of the Dead".to_string(), 1);
-    map.insert("Fallen Bishop Hibram".to_string(), 2);
-    map.insert("Detardeurus".to_string(), 3);
-    map.insert("Samurai Specter".to_string(), 4);
-    map.insert("Maya".to_string(), 5);
-    map.insert("Lady Tanee".to_string(), 6);
-    map.insert("Tao Gunka".to_string(), 7);
-    map.insert("RSX-0806".to_string(), 8);
-    map.insert("Dracula".to_string(), 9);
-    map.insert("Doppelganger".to_string(), 10);
-    map.insert("Dark Lord".to_string(), 11);
-    map.insert("Evil Snake Lord".to_string(), 16);
-    map.insert("Pharaoh".to_string(), 17);
-    map.insert("Vesper".to_string(), 18);
-    map.insert("Kiel D-01".to_string(), 19);
-    map.insert("Egnigem Cenia".to_string(), 20);
-    map.insert("White Lady".to_string(), 21);
-    map.insert("Osiris".to_string(), 22);
-    map.insert("Amon Ra".to_string(), 23);
-    map.insert("Gopinich".to_string(), 24);
-    map.insert("Valkyrie Randgris".to_string(), 25);
-    map.insert("Moonlight Flower".to_string(), 26);
-    map.insert("Baphomet".to_string(), 27);
-    map.insert("Golden Thief Bug".to_string(), 28);
-    map.insert("Gloom Under Night".to_string(), 29);
-    map.insert("Ifrit".to_string(), 30);
-    map.insert("Drake".to_string(), 31);
-    map.insert("Turtle General".to_string(), 32);
-    map.insert("Stormy Knight".to_string(), 33);
-    map.insert("Orc Lord".to_string(), 35);
-    map.insert("Orc Hero".to_string(), 36);
-    map.insert("Hatii".to_string(), 37);
-    map.insert("Mistress".to_string(), 38);
-    map.insert("Phreeoni".to_string(), 39);
-    map.insert("Wounded Morocc".to_string(), 40);
-    map.insert("Eddga".to_string(), 41);
-    map.insert("Atroce".to_string(), 44);
-    map.insert("Balam".to_string(), 47);
-    map.insert("Shax".to_string(), 48);
-    map.insert("Raum".to_string(), 49);
-    map.insert("Paimon".to_string(), 50);
-    map.insert("Apollyon".to_string(), 51);
-    map
-}
-
-lazy_static! {
-    static ref MVP_TO_ID: SyncMutex<HashMap<String, i32>> = SyncMutex::new(initialize_map());
 }
 
 #[group]
@@ -143,64 +94,6 @@ async fn main() {
 #[command]
 async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
     msg.reply(ctx, "Pong!").await?;
-
-    Ok(())
-}
-
-#[command]
-#[only_in(guilds)]
-async fn join(ctx: &Context, msg: &Message) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let channel_id = guild
-        .voice_states
-        .get(&msg.author.id)
-        .and_then(|voice_state| voice_state.channel_id);
-
-    let connect_to = match channel_id {
-        Some(channel) => channel,
-        None => {
-            utils::check_msg(msg.reply(ctx, "Not in a voice channel").await);
-            return Ok(());
-        }
-    };
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation")
-        .clone();
-
-    let _handler = manager.join(guild_id, connect_to).await;
-
-    Ok(())
-}
-
-#[command]
-#[only_in(guilds)]
-async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation")
-        .clone();
-    let has_handler = manager.get(guild_id).is_some();
-
-    if has_handler {
-        if let Err(e) = manager.remove(guild_id).await {
-            utils::check_msg(
-                msg.channel_id
-                    .say(&ctx.http, format!("Failed: {:?}", e))
-                    .await,
-            );
-        }
-
-        utils::check_msg(msg.channel_id.say(&ctx.http, "Left voice channel").await);
-    } else {
-        utils::check_msg(msg.reply(ctx, "Not in a voice channel").await);
-    }
 
     Ok(())
 }
