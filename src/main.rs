@@ -1,32 +1,32 @@
-mod utils;
 mod commands;
+mod utils;
 
-use std::env;
+use crate::commands::mvp::*;
+use crate::commands::tts::*;
+
 use std::collections::HashMap;
+use std::env;
 use std::fs::File;
-use std::sync::{Arc, Mutex as SyncMutex};
 use std::io::Write;
+use std::sync::{Arc, Mutex as SyncMutex};
 
 use reqwest::header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::{Client as RequestClient, StatusCode};
 use songbird::{
-    input::restartable::Restartable,
-    Event,
-    EventContext,
-    EventHandler as VoiceEventHandler,
-    SerenityInit,
-    TrackEvent,
+    input::restartable::Restartable, Event, EventContext, EventHandler as VoiceEventHandler,
+    SerenityInit, TrackEvent,
 };
 
 // Import the `Context` to handle commands.
+use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 use serenity::{
     async_trait,
     client::{Client, Context, EventHandler},
     framework::{
         standard::{
             macros::{command, group},
-            Args,
-            CommandResult,
+            Args, CommandResult,
         },
         StandardFramework,
     },
@@ -34,15 +34,12 @@ use serenity::{
     model::{channel::Message, gateway::Ready, prelude::ChannelId},
     prelude::GatewayIntents,
 };
-use serde::{Serialize, Deserialize};
-use lazy_static::lazy_static;
 use tokio::sync::Mutex;
-use scraper;
-use crate::commands::tts::*;
 
 type ConversationHistory = Vec<ChatMessage>;
 lazy_static! {
-    static ref CONVERSATIONS: Mutex<HashMap<ChannelId, ConversationHistory>> = Mutex::new(HashMap::new());
+    static ref CONVERSATIONS: Mutex<HashMap<ChannelId, ConversationHistory>> =
+        Mutex::new(HashMap::new());
 }
 
 fn initialize_map() -> HashMap<String, i32> {
@@ -118,7 +115,9 @@ async fn main() {
     //env::set_var("RUST_BACKTRACE", "1");
     // Login with a bot token from the environment
     let token = env::var("DISCORD_TOKEN").expect("token");
-    let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT | GatewayIntents::GUILD_VOICE_STATES;
+    let intents = GatewayIntents::non_privileged()
+        | GatewayIntents::MESSAGE_CONTENT
+        | GatewayIntents::GUILD_VOICE_STATES;
 
     let mut client = Client::builder(token, intents)
         .event_handler(Handler)
@@ -126,152 +125,24 @@ async fn main() {
         .register_songbird()
         .await
         .expect("Error creating client");
-    
+
     tokio::spawn(async move {
-        let _ = client.start().await.map_err(|why| println!("Client ended: {:?}", why));
+        let _ = client
+            .start()
+            .await
+            .map_err(|why| println!("Client ended: {:?}", why));
     });
 
-    tokio::signal::ctrl_c().await.map_err(|why| println!("Failed to handle Ctrl-C signal: {:?}", why)).ok();
+    tokio::signal::ctrl_c()
+        .await
+        .map_err(|why| println!("Failed to handle Ctrl-C signal: {:?}", why))
+        .ok();
     println!("Received Ctrl-C, shutting down.");
 }
 
 #[command]
 async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
     msg.reply(ctx, "Pong!").await?;
-
-    Ok(())
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Timer {
-    id: String,
-    date: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct MVPCountdown {
-    enable: bool,
-    servertime: String,
-    offset: i64,
-    elements: Vec<Timer>
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct MVP {
-    name: String,
-    map: String,
-}
-
-#[command]
-async fn mvp(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.reply(ctx, "Ready to track MVPs!").await?;
-
-    let response = reqwest::get(
-        "http://www.uropk.com.br/?module=mvp",
-    )
-    .await?
-    .text()
-    .await?;
-
-
-    let mut map = HashMap::new();
-    map.insert("1", "Lord of the Dead (gef_dun03)".to_string());
-    map.insert("2", "Fallen Bishop Hibram (abbey02)".to_string());
-    map.insert("3", "Detardeurus (abyss_03)".to_string());
-    map.insert("4", "Samurai Specter (ama_dun03)".to_string());
-    map.insert("5", "Maya (anthell02)".to_string());
-    map.insert("6", "Lady Tanee (ayo_dun02)".to_string());
-    map.insert("7", "Tao Gunka (beach_dun)".to_string());
-    map.insert("8", "RSX-0806 (ein_dun02)".to_string());
-    map.insert("9", "Dracula (gef_dun01)".to_string());
-
-    map.insert("10", "Doppelganger (gef_dun02)".to_string());
-    map.insert("11", "Dark Lord (gl_chyard)".to_string());
-    map.insert("12", "Eddga (gld_dun01)".to_string());
-    map.insert("13", "Doppelganger (gld_dun02)".to_string());
-    map.insert("14", "Maya (gld_dun03)".to_string());
-    map.insert("15", "Dark Lord (gld_dun04)".to_string());
-    map.insert("16", "Evil Snake Lord (gon_dun03)".to_string());
-    map.insert("17", "Pharaoh (in_sphinx5)".to_string());
-    map.insert("18", "Vesper (jupe_core)".to_string());
-    map.insert("19", "Kiel D-01 (kh_dun02)".to_string());
-
-    map.insert("20", "Egnigem Cenia (lhz_dun02)".to_string());
-    map.insert("21", "White Lady (lou_dun03)".to_string());
-    map.insert("22", "Osiris (moc_pryd04)".to_string());
-    map.insert("23", "Amon Ra (moc_pryd06)".to_string());
-    map.insert("24", "Gopinich (mosk_dun03)".to_string());
-    map.insert("25", "Valkyrie Randgris (odin_tem03)".to_string());
-    map.insert("26", "Moonlight Flower (pay_dun04)".to_string());
-    map.insert("27", "Baphomet (prt_maze03)".to_string());
-    map.insert("28", "Golden Thief Bug (prt_sewb4)".to_string());
-    map.insert("29", "Gloom Under Night (ra_san05)".to_string());
-
-    map.insert("30", "Ifrit (thor_v03)".to_string());
-    map.insert("31", "Drake (treasure02)".to_string());
-    map.insert("32", "Turtle General (tur_dun04)".to_string());
-    map.insert("33", "Stormy Knight (xmas_dun02)".to_string());
-    map.insert("34", "Orc Hero (gef_fild02)".to_string());
-    map.insert("35", "Orc Lord (gef_fild10)".to_string());
-    map.insert("36", "Orc Hero (gef_fild14)".to_string());
-    map.insert("37", "Hatii (xmas_fild01)".to_string());
-    map.insert("38", "Mistress (mjolnir_04)".to_string());
-    map.insert("39", "Phreeoni (moc_fild17)".to_string());
-
-    map.insert("40", "Wounded Morocc (moc_fild22)".to_string());
-    map.insert("41", "Eddga (pay_fild11)".to_string());
-    map.insert("42", "Atroce (ra_fild02)".to_string());
-    map.insert("43", "Atroce (ra_fild03)".to_string());
-    map.insert("44", "Atroce (ra_fild04)".to_string());
-    map.insert("45", "Atroce (ve_fild01)".to_string());
-    map.insert("47", "Balam (unholy)".to_string());
-    map.insert("48", "Shax (unholy)".to_string());
-    map.insert("49", "Raum (unholy)".to_string());
-
-    map.insert("50", "Paimon (unholy)".to_string());
-    map.insert("51", "Apollyon (unholy)".to_string());
-
-    let mut response_mvp_string: String = Default::default();
-    let _mvp_timer_vec: Vec<&Timer> = vec![];
-
-    {
-        let response_clone = response.clone();
-        let document = scraper::Html::parse_document(&response_clone);
-
-        let script_selector = scraper::Selector::parse(".table-responsive + script").unwrap();
-        let script_tag = document
-            .select(&script_selector)
-            .next()
-            .unwrap();
-        let script_content = script_tag.text().collect::<String>();
-
-        let js_object_start = script_content.find("{").unwrap();
-        let js_object_end = script_content.rfind("}").unwrap() + 1;
-        let js_object_str = &script_content[js_object_start..js_object_end];
-
-        let json_object_str = js_object_str.replace("'", "\"");
-
-        let parsed_object: Result<MVPCountdown, _> = serde_json::from_str(&json_object_str);
-        println!("Parsed object content: {:?}", parsed_object);
-
-        let mvp_string = parsed_object.unwrap().elements;
-
-        mvp_string.iter().for_each(|x| {
-            response_mvp_string.push_str(map.get(&x.id as &str).unwrap_or(&"unknown".to_string()));
-            response_mvp_string.push_str("\t");
-            response_mvp_string.push_str(&x.date);
-            response_mvp_string.push_str("\n");
-        });
-
-        // response_mvp_string.push_str("Alive MVPs:");
-
-        for (id, name) in &map {
-            
-          println!("id: {} \t name {} ", id, name);
-        }
-    }
-
-    utils::check_msg(msg.channel_id.say(&ctx.http, response_mvp_string).await);
 
     Ok(())
 }
@@ -283,19 +154,22 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
     let guild_id = guild.id;
 
     let channel_id = guild
-        .voice_states.get(&msg.author.id)
+        .voice_states
+        .get(&msg.author.id)
         .and_then(|voice_state| voice_state.channel_id);
 
     let connect_to = match channel_id {
         Some(channel) => channel,
         None => {
             utils::check_msg(msg.reply(ctx, "Not in a voice channel").await);
-            return Ok(())
+            return Ok(());
         }
     };
 
-    let manager = songbird::get(ctx).await
-        .expect("Songbird Voice client placed in at initialisation").clone();
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation")
+        .clone();
 
     let _handler = manager.join(guild_id, connect_to).await;
 
@@ -308,13 +182,19 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
     let guild = msg.guild(&ctx.cache).unwrap();
     let guild_id = guild.id;
 
-    let manager = songbird::get(ctx).await
-        .expect("Songbird Voice client placed in at initialisation").clone();
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation")
+        .clone();
     let has_handler = manager.get(guild_id).is_some();
 
     if has_handler {
         if let Err(e) = manager.remove(guild_id).await {
-            utils::check_msg(msg.channel_id.say(&ctx.http, format!("Failed: {:?}", e)).await);
+            utils::check_msg(
+                msg.channel_id
+                    .say(&ctx.http, format!("Failed: {:?}", e))
+                    .await,
+            );
         }
 
         utils::check_msg(msg.channel_id.say(&ctx.http, "Left voice channel").await);
@@ -338,14 +218,14 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             );
 
             return Ok(());
-        },
+        }
     };
 
     if !url.starts_with("http") {
         utils::check_msg(
             msg.channel_id
                 .say(&ctx.http, "Must provide a valid URL")
-                .await
+                .await,
         );
 
         return Ok(());
@@ -353,7 +233,6 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 
     let guild = msg.guild(&ctx.cache).unwrap();
     let guild_id = guild.id;
-
 
     let manager = songbird::get(ctx)
         .await
@@ -373,7 +252,7 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 utils::check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
 
                 return Ok(());
-            },
+            }
         };
 
         let song = handler.enqueue_source(source.into());
@@ -401,7 +280,7 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             msg.channel_id
                 .say(&ctx.http, "Not in a voice channel to play in")
                 .await,
-        ); 
+        );
     }
 
     Ok(())
@@ -457,11 +336,9 @@ async fn list(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
 
-        let queue_str = queue
-            .current_queue();
+        let queue_str = queue.current_queue();
 
         println!("{:?}", queue_str);
-
 
         utils::check_msg(
             msg.channel_id
@@ -485,7 +362,7 @@ async fn list(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 #[derive(Serialize, Debug)]
 struct ChatCompletionRequest {
     model: String,
-    messages: Vec<ChatMessage>
+    messages: Vec<ChatMessage>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -499,7 +376,7 @@ struct ChatCompletionResponse {
     id: String,
     object: String,
     created: u64,
-    model: String, 
+    model: String,
     usage: ChatCompletionUsage,
     choices: Vec<ChatCompletionChoice>,
 }
@@ -528,7 +405,7 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 
     let api_key = env::var("OPENAI_API_KEY").expect("token");
 
-    let junko_partial_prompt = "Without repeating the same question, respond in less than 70 characters as Junko Enoshima from Danganronpa series, and do not mention 'OpenAI', 'ChatGPT' or 'AI language model', do not use quotations, and answer in Brazilian Portuguese: ".to_owned();
+    let junko_partial_prompt = "I want you to act as a linux terminal. I will type commands and you will reply with what the terminal should show. I want you to only reply with the terminal output inside one unique code block, and nothing else. do not write explanations. do not type commands unless I instruct you to do so. when i need to tell you something in english, i will do so by putting text inside curly brackets {like this}. my first command is pwd".to_owned();
 
     let full_prompt = [junko_partial_prompt, prompt.to_string()].join("\n");
 
@@ -552,7 +429,10 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 
     // Create request headers
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, format!("Bearer {}", api_key).parse().unwrap());
+    headers.insert(
+        AUTHORIZATION,
+        format!("Bearer {}", api_key).parse().unwrap(),
+    );
     headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
 
     let response = RequestClient::new()
@@ -561,7 +441,8 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         .json(&request_body)
         .send()
         .await?
-        .json::<ChatCompletionResponse>().await?;
+        .json::<ChatCompletionResponse>()
+        .await?;
 
     println!("OpenAI response: {:?}", response);
 
@@ -569,11 +450,7 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 
     println!("Answer: {:?}", result);
 
-    utils::check_msg(
-        msg.channel_id
-            .say(&ctx.http, result)
-            .await,
-    );
+    utils::check_msg(msg.channel_id.say(&ctx.http, result).await);
 
     // Update the conversation history with the AI's response
     let ai_message = ChatMessage {
@@ -583,17 +460,18 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     channel_conversations.push(ai_message);
 
     // TODO make this into its own function
-    let speech_key  = env::var("SPEECH_KEY").expect("token");
-    let speech_region = env::var("SPEECH_REGION").expect("token");
+    if false {
+        let speech_key = env::var("SPEECH_KEY").expect("token");
+        let speech_region = env::var("SPEECH_REGION").expect("token");
 
-    let url = format!(
-        "https://{}.tts.speech.microsoft.com/cognitiveservices/v1",
-        speech_region
-    );
+        let url = format!(
+            "https://{}.tts.speech.microsoft.com/cognitiveservices/v1",
+            speech_region
+        );
 
-    let client = RequestClient::new();
+        let client = RequestClient::new();
 
-    let response = client
+        let response = client
     .post(&url)
     .header("Ocp-Apim-Subscription-Key", speech_key)
     .header("Content-Type", "application/ssml+xml")
@@ -609,43 +487,44 @@ async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     .send()
     .await?;
 
-    match response.status() {
-        StatusCode::OK => {
-            let mut output_file = File::create("output.mp3")?;
-            println!("Output file created: output.mp3");
-            let bytes = response.bytes().await?;
-            println!("TTS response length: {}", bytes.len());
-            output_file.write_all(&bytes)?;
-            drop(output_file);
+        match response.status() {
+            StatusCode::OK => {
+                let mut output_file = File::create("output.mp3")?;
+                println!("Output file created: output.mp3");
+                let bytes = response.bytes().await?;
+                println!("TTS response length: {}", bytes.len());
+                output_file.write_all(&bytes)?;
+                drop(output_file);
 
-            let guild_id = msg.guild_id.unwrap();
-            let manager = songbird::get(ctx).await
-                .expect("Songbird Voice client placed in initialisation.").clone();
+                let guild_id = msg.guild_id.unwrap();
+                let manager = songbird::get(ctx)
+                    .await
+                    .expect("Songbird Voice client placed in initialisation.")
+                    .clone();
 
-            if let Some(handler_lock) = manager.get(guild_id) {
-                let mut handler = handler_lock.lock().await;
+                if let Some(handler_lock) = manager.get(guild_id) {
+                    let mut handler = handler_lock.lock().await;
 
-                let source = songbird::ffmpeg("./output.mp3").await.unwrap();
-                println!("Playing output.mp3 in the voice channel");
-                handler.play_source(source);
-            } else {
-                println!("No handler found for the guild");
+                    let source = songbird::ffmpeg("./output.mp3").await.unwrap();
+                    println!("Playing output.mp3 in the voice channel");
+                    handler.play_source(source);
+                } else {
+                    println!("No handler found for the guild");
+                }
             }
-        }
-        _ => {
-            println!("Error synthesizing TTS: {:?}", response);
-            utils::check_msg(
-                msg.channel_id
-                    .say(&ctx.http, "Error synthesizing TTS")
-                    .await,
-            );
+            _ => {
+                println!("Error synthesizing TTS: {:?}", response);
+                utils::check_msg(
+                    msg.channel_id
+                        .say(&ctx.http, "Error synthesizing TTS")
+                        .await,
+                );
+            }
         }
     }
 
     Ok(())
 }
-
-
 
 struct TrackEndNotifier {
     chan_id: ChannelId,
@@ -675,11 +554,7 @@ struct SongEndNotifier {
 #[async_trait]
 impl VoiceEventHandler for SongEndNotifier {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        utils::check_msg(
-            self.chan_id
-                .say(&self.http, "Song finished playing!")
-                .await
-        );
+        utils::check_msg(self.chan_id.say(&self.http, "Song finished playing!").await);
 
         None
     }
