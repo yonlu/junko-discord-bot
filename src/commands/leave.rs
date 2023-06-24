@@ -11,7 +11,7 @@ use crate::utils::check_msg;
 
 #[command]
 #[only_in(guilds)]
-async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
+pub async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
     let guild = msg.guild(&ctx.cache).unwrap();
     let guild_id = guild.id;
 

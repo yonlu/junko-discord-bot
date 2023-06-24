@@ -1,10 +1,15 @@
-use serenity::builder::CreateApplicationCommand;
-use serenity::model::prelude::interaction::application_command::CommandDataOption;
+use serenity::{
+    client::Context,
+    framework::standard::{
+            macros::command,
+            CommandResult,
+        },
+    model::channel::Message,
+};
 
-pub fn run(_options: &[CommandDataOption]) -> String {
-    "Upupupu, I'm alive!".to_string()
-}
+#[command]
+pub async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.reply(ctx, "Upupupu! I'm alive!").await?;
 
-pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
-    command.name("ping").description("A ping command")
+    Ok(())
 }
