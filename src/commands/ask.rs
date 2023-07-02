@@ -16,7 +16,7 @@ use crate::utils::check_msg;
 
 use tokio::sync::Mutex;
 
-use tracing::error;
+use tracing::{error, info};
 
 #[command]
 #[only_in(guilds)]
@@ -34,6 +34,7 @@ pub async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     // Fetch the conversation history for this channel
     let mut conversations = CONVERSATIONS.lock().await;
     let channel_conversations = conversations.entry(msg.channel_id).or_insert(vec![]);
+
 
     // Create a user message and add it to the conversation history
     let user_message = ChatMessage {
@@ -55,17 +56,22 @@ pub async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     );
     headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
 
-    let response = RequestClient::new()
+
+    match RequestClient::new()
         .post("https://api.openai.com/v1/chat/completions")
         .headers(headers)
         .json(&request_body)
         .send()
-        .await?;
-
-    match response.json::<ChatCompletionResponse>().await {
-        Ok(res) => {
-            let result = &res.choices[0].message.content;
+        .await
+    {
+        Ok(resp) => {
+            let response = resp.json::<ChatCompletionResponse>().await?;
+            info!("OpenAI response: {:?}", response);
+            let result = &response.choices[0].message.content;
+            info!("Answer: {:?}", result);
             check_msg(msg.channel_id.say(&ctx.http, result).await);
+
+            speak(&ctx, &msg, result.to_string()).await?;
 
             // Update the conversation history with the AI's response
             let ai_message = ChatMessage {
@@ -73,16 +79,17 @@ pub async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
                 content: result.to_string(),
             };
             channel_conversations.push(ai_message);
-        },
+        }
         Err(err) => {
-            error!("Failed to deserialize GPT response: {:?}", err);
+            error!("Failed to send HTTP request: {:?}", err);
+            return Err("HTTP request failed".into());
         }
     }
 
     Ok(())
 }
 
-async fn _speak(
+async fn speak(
     ctx: &Context,
     msg: &Message,
     result: String,

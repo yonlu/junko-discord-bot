@@ -949,6 +949,8 @@ dependencies = [
  "serenity",
  "songbird",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "youtube_dl",
 ]
 
