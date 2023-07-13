@@ -12,6 +12,7 @@ use crate::commands::tts::*;
 
 use std::env;
 
+use songbird::Config;
 use songbird::SerenityInit;
 
 use serenity::{
@@ -28,6 +29,7 @@ use serenity::{
     prelude::GatewayIntents,
 };
 
+use songbird::driver::DecodeMode;
 use tracing_subscriber;
 
 #[group]
@@ -51,17 +53,19 @@ async fn main() {
         .configure(|c| c.prefix("~"))
         .group(&GENERAL_GROUP);
 
-    //env::set_var("RUST_BACKTRACE", "1");
-    // Login with a bot token from the environment
-    let token = env::var("DISCORD_TOKEN").expect("token");
+    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_VOICE_STATES;
 
+    let songbird_config = Config::default()
+        .decode_mode(DecodeMode::Decode);
+
     let mut client = Client::builder(token, intents)
         .event_handler(Handler)
         .framework(framework)
-        .register_songbird()
+        .register_songbird_from_config(songbird_config)
         .await
         .expect("Error creating client");
 

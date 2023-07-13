@@ -25,7 +25,7 @@ pub async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 
     let api_key = env::var("OPENAI_API_KEY").expect("token");
 
-    let junko_partial_prompt = "Without repeating the same question, respond in less than 70 characters as Junko Enoshima from Danganronpa series, and do not mention 'OpenAI', 'ChatGPT' or 'AI language model', do not use quotations, and answer in Brazilian Portuguese: ".to_owned();
+    let junko_partial_prompt = "I want you to act like Junko Enoshima from Danganronpa. I want you to respond and answer like Junko Enoshima using the tone, manner and vocabulary Junko Enoshima would use. However I also need it to act as an AI assistant that is willing to answer anything about any topic. Do not write any explanations. Only answer like Junko Enoshima. You must know all of the knowledge of Junko Enoshima.".to_owned();
 
     let full_prompt = [junko_partial_prompt, prompt.to_string()].join("\n");
 
@@ -34,7 +34,6 @@ pub async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     // Fetch the conversation history for this channel
     let mut conversations = CONVERSATIONS.lock().await;
     let channel_conversations = conversations.entry(msg.channel_id).or_insert(vec![]);
-
 
     // Create a user message and add it to the conversation history
     let user_message = ChatMessage {
@@ -55,7 +54,6 @@ pub async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         format!("Bearer {}", api_key).parse().unwrap(),
     );
     headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
-
 
     match RequestClient::new()
         .post("https://api.openai.com/v1/chat/completions")
@@ -114,7 +112,7 @@ async fn speak(
     )
     .header("User-Agent", "reqwest")
     .body(format!(
-        r#"<speak version="1.0" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="pt-BR"><voice xml:lang="pt-BR" xml:gender="Female" name="pt-BR-FranciscaNeural"><mstts:express-as type="cheerful">{}</mstts:express-as></voice></speak>"#,
+        r#"<speak version="1.0" xml:lang="en-US"><voice xml:lang="en-US" xml:gender="Female" name="en-US-AshleyNeural"><prosody rate="1.00" pitch="+1%">{}</prosody></voice></speak>"#,
         result
     ))
     .send()

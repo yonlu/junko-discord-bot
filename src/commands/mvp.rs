@@ -1,13 +1,10 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serenity::{
     client::Context,
-    framework::standard::{
-            macros::command,
-            CommandResult,
-        },
+    framework::standard::{macros::command, CommandResult},
     model::channel::Message,
 };
+use std::collections::HashMap;
 
 use crate::utils::check_msg;
 
@@ -15,70 +12,20 @@ use crate::utils::check_msg;
 pub async fn mvp(ctx: &Context, msg: &Message) -> CommandResult {
     msg.reply(ctx, "Ready to track MVPs!").await?;
 
-    let response = reqwest::get("http://www.uropk.com.br/?module=mvp")
-        .await?
-        .text()
-        .await?;
+    let response =
+        reqwest::get("https://www.uropk.com.br/?module=mvp&action=index&search=&status=1&submit=1")
+            .await?
+            .text()
+            .await?;
 
     let mut map = HashMap::new();
-    map.insert("1", "Lord of the Dead (gef_dun03)".to_string());
-    map.insert("2", "Fallen Bishop Hibram (abbey02)".to_string());
-    map.insert("3", "Detardeurus (abyss_03)".to_string());
-    map.insert("4", "Samurai Specter (ama_dun03)".to_string());
-    map.insert("5", "Maya (anthell02)".to_string());
-    map.insert("6", "Lady Tanee (ayo_dun02)".to_string());
-    map.insert("7", "Tao Gunka (beach_dun)".to_string());
-    map.insert("8", "RSX-0806 (ein_dun02)".to_string());
-    map.insert("9", "Dracula (gef_dun01)".to_string());
+    map.insert("1", "Balam (unholy)".to_string());
+    map.insert("2", "Shax (unholy)".to_string());
+    map.insert("3", "Raum (unholy)".to_string());
+    map.insert("4", "Paimon (unholy)".to_string());
+    map.insert("5", "Apollyon (unholy)".to_string());
 
-    map.insert("10", "Doppelganger (gef_dun02)".to_string());
-    map.insert("11", "Dark Lord (gl_chyard)".to_string());
-    map.insert("12", "Eddga (gld_dun01)".to_string());
-    map.insert("13", "Doppelganger (gld_dun02)".to_string());
-    map.insert("14", "Maya (gld_dun03)".to_string());
-    map.insert("15", "Dark Lord (gld_dun04)".to_string());
-    map.insert("16", "Evil Snake Lord (gon_dun03)".to_string());
-    map.insert("17", "Pharaoh (in_sphinx5)".to_string());
-    map.insert("18", "Vesper (jupe_core)".to_string());
-    map.insert("19", "Kiel D-01 (kh_dun02)".to_string());
-
-    map.insert("20", "Egnigem Cenia (lhz_dun02)".to_string());
-    map.insert("21", "White Lady (lou_dun03)".to_string());
-    map.insert("22", "Osiris (moc_pryd04)".to_string());
-    map.insert("23", "Amon Ra (moc_pryd06)".to_string());
-    map.insert("24", "Gopinich (mosk_dun03)".to_string());
-    map.insert("25", "Valkyrie Randgris (odin_tem03)".to_string());
-    map.insert("26", "Moonlight Flower (pay_dun04)".to_string());
-    map.insert("27", "Baphomet (prt_maze03)".to_string());
-    map.insert("28", "Golden Thief Bug (prt_sewb4)".to_string());
-    map.insert("29", "Gloom Under Night (ra_san05)".to_string());
-
-    map.insert("30", "Ifrit (thor_v03)".to_string());
-    map.insert("31", "Drake (treasure02)".to_string());
-    map.insert("32", "Turtle General (tur_dun04)".to_string());
-    map.insert("33", "Stormy Knight (xmas_dun02)".to_string());
-    map.insert("34", "Orc Hero (gef_fild02)".to_string());
-    map.insert("35", "Orc Lord (gef_fild10)".to_string());
-    map.insert("36", "Orc Hero (gef_fild14)".to_string());
-    map.insert("37", "Hatii (xmas_fild01)".to_string());
-    map.insert("38", "Mistress (mjolnir_04)".to_string());
-    map.insert("39", "Phreeoni (moc_fild17)".to_string());
-
-    map.insert("40", "Wounded Morocc (moc_fild22)".to_string());
-    map.insert("41", "Eddga (pay_fild11)".to_string());
-    map.insert("42", "Atroce (ra_fild02)".to_string());
-    map.insert("43", "Atroce (ra_fild03)".to_string());
-    map.insert("44", "Atroce (ra_fild04)".to_string());
-    map.insert("45", "Atroce (ve_fild01)".to_string());
-    map.insert("47", "Balam (unholy)".to_string());
-    map.insert("48", "Shax (unholy)".to_string());
-    map.insert("49", "Raum (unholy)".to_string());
-
-    map.insert("50", "Paimon (unholy)".to_string());
-    map.insert("51", "Apollyon (unholy)".to_string());
-
-    let mut response_mvp_string: String = Default::default();
-    let _mvp_timer_vec: Vec<&Timer> = vec![];
+    let mut mvp_timer_vec: Vec<Timer> = vec![];
 
     {
         let response_clone = response.clone();
@@ -95,25 +42,51 @@ pub async fn mvp(ctx: &Context, msg: &Message) -> CommandResult {
         let json_object_str = js_object_str.replace("'", "\"");
 
         let parsed_object: Result<MVPCountdown, _> = serde_json::from_str(&json_object_str);
-        println!("Parsed object content: {:?}", parsed_object);
 
-        let mvp_string = parsed_object.unwrap().elements;
+        let mut _timestamp_str = "0";
 
-        mvp_string.iter().for_each(|x| {
-            response_mvp_string.push_str(map.get(&x.id as &str).unwrap_or(&"unknown".to_string()));
-            response_mvp_string.push_str("\t");
-            response_mvp_string.push_str(&x.date);
-            response_mvp_string.push_str("\n");
-        });
+        let mut dead_mvp_ids_vec: Vec<String> = vec![];
 
-        // response_mvp_string.push_str("Alive MVPs:");
+        match parsed_object {
+            Ok(mvp_countdown) => {
+                println!("All good! Server time: {}", mvp_countdown.servertime);
+                for timer in mvp_countdown.elements.iter() {
+                    dead_mvp_ids_vec.push(timer.id.clone());
+                    _timestamp_str = &timer.date.to_string();
 
-        for (id, name) in &map {
-            println!("id: {} \t name {} ", id, name);
-        }
+                    mvp_timer_vec.push(Timer {
+                        id: timer.id.clone(),
+                        date: timer.date.clone(),
+                    });
+                }
+                drop(mvp_countdown);
+            }
+            Err(_) => {
+                println!("Something broke");
+            }
+        };
+
+        println!("Dead mvp ids: {:?}", dead_mvp_ids_vec);
     }
 
-    check_msg(msg.channel_id.say(&ctx.http, response_mvp_string).await);
+    let mut mvps_close_respawn = String::from("MVPs respawn timers: \n");
+
+    mvp_timer_vec.iter().for_each(|timer| {
+        if map.contains_key(timer.id.as_str()) {
+            println!("Timer id: {} \t date: {}", timer.id, timer.date);
+            match map.get(timer.id.as_str()) {
+                Some(mvp_timer) => {
+                    mvps_close_respawn.push_str(mvp_timer);
+                    mvps_close_respawn.push_str("\t");
+                    mvps_close_respawn.push_str(&timer.date.to_string());
+                    mvps_close_respawn.push_str("\n");
+                }
+                None => println!("Nothing here!"),
+            }
+        }
+    });
+
+    check_msg(msg.channel_id.say(&ctx.http, mvps_close_respawn).await);
 
     Ok(())
 }
