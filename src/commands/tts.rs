@@ -6,11 +6,7 @@ use reqwest::{Client as RequestClient, StatusCode};
 
 use serenity::{
     client::Context,
-    framework::standard::{
-            macros::command,
-            Args,
-            CommandResult,
-        },
+    framework::standard::{macros::command, Args, CommandResult},
     model::channel::Message,
 };
 
@@ -26,9 +22,8 @@ pub async fn tts(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         false => args.rest(),
     };
 
-
     // TODO make this into its own function
-    let speech_key  = env::var("SPEECH_KEY").expect("token");
+    let speech_key = env::var("SPEECH_KEY").expect("token");
     let speech_region = env::var("SPEECH_REGION").expect("token");
 
     let url = format!(
@@ -61,8 +56,10 @@ pub async fn tts(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             drop(output_file);
 
             let guild_id = msg.guild_id.unwrap();
-            let manager = songbird::get(ctx).await
-                .expect("Songbird Voice client placed in initialisation.").clone();
+            let manager = songbird::get(ctx)
+                .await
+                .expect("Songbird Voice client placed in initialisation.")
+                .clone();
 
             if let Some(handler_lock) = manager.get(guild_id) {
                 let mut handler = handler_lock.lock().await;

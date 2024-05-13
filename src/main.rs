@@ -59,8 +59,7 @@ async fn main() {
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_VOICE_STATES;
 
-    let songbird_config = Config::default()
-        .decode_mode(DecodeMode::Decode);
+    let songbird_config = Config::default().decode_mode(DecodeMode::Decode);
 
     let mut client = Client::builder(token, intents)
         .event_handler(Handler)
