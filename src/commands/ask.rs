@@ -16,38 +16,28 @@ use crate::utils::check_msg;
 
 use tokio::sync::Mutex;
 
-use tracing::{error, info};
+use tracing::error;
 
 #[command]
 #[only_in(guilds)]
 pub async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
-    let prompt = args.rest();
-
     let api_key = env::var("OPENAI_API_KEY").expect("token");
 
-    let junko_partial_prompt = "I want you to act like Junko Enoshima from Danganronpa. I want you to respond and answer like Junko Enoshima using the tone, manner and vocabulary Junko Enoshima would use. However I also need it to act as an AI assistant that is willing to answer anything about any topic. Do not write any explanations. Only answer like Junko Enoshima. You must know all of the knowledge of Junko Enoshima.".to_owned();
+    let prompt = args.rest().to_string();
+    let junko_partial_prompt = "I want you to act like Junko Enoshima from Danganronpa. I want you to respond and answer like Junko Enoshima using the tone, manner and vocabulary Junko Enoshima would use. However I also need it to act as an AI assistant that is willing to answer anything about any topic. Do not write any explanations. Only answer like Junko Enoshima. You must know all of the knowledge of Junko Enoshima.".to_string();
+    let full_prompt = [junko_partial_prompt, prompt].join("\n");
 
-    let full_prompt = [junko_partial_prompt, prompt.to_string()].join("\n");
-
-    println!("Full prompt: {:?}", full_prompt);
-
-    // Fetch the conversation history for this channel
     let mut conversations = CONVERSATIONS.lock().await;
     let channel_conversations = conversations.entry(msg.channel_id).or_insert(vec![]);
 
-    // Create a user message and add it to the conversation history
     let user_message = ChatMessage {
         role: "user".to_string(),
         content: full_prompt.to_string(),
     };
     channel_conversations.push(user_message);
 
-    let request_body = ChatCompletionRequest {
-        model: "gpt-3.5-turbo".to_string(),
-        messages: channel_conversations.clone(),
-    };
+    let request_client = RequestClient::new();
 
-    // Create request headers
     let mut headers = HeaderMap::new();
     headers.insert(
         AUTHORIZATION,
@@ -55,31 +45,35 @@ pub async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     );
     headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
 
-    match RequestClient::new()
+    let request_body = ChatCompletionRequest {
+        model: "gpt-4o".to_string(),
+        messages: channel_conversations.clone(),
+    };
+
+    let response = request_client
         .post("https://api.openai.com/v1/chat/completions")
         .headers(headers)
         .json(&request_body)
         .send()
-        .await
-    {
-        Ok(resp) => {
-            let response = resp.json::<ChatCompletionResponse>().await?;
-            info!("OpenAI response: {:?}", response);
+        .await?;
+
+    match response.status() {
+        StatusCode::OK => {
+            let response = response.json::<ChatCompletionResponse>().await?;
             let result = &response.choices[0].message.content;
-            info!("Answer: {:?}", result);
+
             check_msg(msg.channel_id.say(&ctx.http, result).await);
 
             speak(&ctx, &msg, result.to_string()).await?;
 
-            // Update the conversation history with the AI's response
             let ai_message = ChatMessage {
                 role: "assistant".to_string(),
                 content: result.to_string(),
             };
             channel_conversations.push(ai_message);
         }
-        Err(err) => {
-            error!("Failed to send HTTP request: {:?}", err);
+        _ => {
+            error!("Failed to send HTTP request");
             return Err("HTTP request failed".into());
         }
     }
