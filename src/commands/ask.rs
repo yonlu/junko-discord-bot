@@ -1,80 +1,65 @@
-use std::{collections::HashMap, env, error::Error, fs::File, io::Write};
+use std::{collections::HashMap, error::Error, fs::File, io::Write};
 
-use serde::{Deserialize, Serialize};
 use serenity::{
     client::Context,
     framework::standard::{macros::command, Args, CommandResult},
     model::{channel::Message, prelude::ChannelId},
 };
 
-use reqwest::header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::{Client as RequestClient, StatusCode};
 
 use lazy_static::lazy_static;
 
+use crate::claude::AnthropicMessage;
 use crate::utils::check_msg;
 
 use tokio::sync::Mutex;
 
 use tracing::error;
 
+const SYSTEM_PROMPT: &str = "I want you to act like Junko Enoshima from Danganronpa. I want you to respond and answer like Junko Enoshima using the tone, manner and vocabulary Junko Enoshima would use. However I also need it to act as an AI assistant that is willing to answer anything about any topic. Do not write any explanations. Only answer like Junko Enoshima. You must know all of the knowledge of Junko Enoshima.";
+
 #[command]
 #[only_in(guilds)]
 pub async fn ask(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
-    let api_key = env::var("OPENAI_API_KEY").expect("token");
-
     let prompt = args.rest().to_string();
-    let junko_partial_prompt = "I want you to act like Junko Enoshima from Danganronpa. I want you to respond and answer like Junko Enoshima using the tone, manner and vocabulary Junko Enoshima would use. However I also need it to act as an AI assistant that is willing to answer anything about any topic. Do not write any explanations. Only answer like Junko Enoshima. You must know all of the knowledge of Junko Enoshima.".to_string();
-    let full_prompt = [junko_partial_prompt, prompt].join("\n");
 
     let mut conversations = CONVERSATIONS.lock().await;
     let channel_conversations = conversations.entry(msg.channel_id).or_insert(vec![]);
 
-    let user_message = ChatMessage {
+    let user_message = AnthropicMessage {
         role: "user".to_string(),
-        content: full_prompt.to_string(),
+        content: prompt,
     };
     channel_conversations.push(user_message);
 
     let request_client = RequestClient::new();
 
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        AUTHORIZATION,
-        format!("Bearer {}", api_key).parse().unwrap(),
-    );
-    headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
-
-    let request_body = ChatCompletionRequest {
-        model: "gpt-4o".to_string(),
-        messages: channel_conversations.clone(),
-    };
-
-    let response = request_client
-        .post("https://api.openai.com/v1/chat/completions")
-        .headers(headers)
-        .json(&request_body)
-        .send()
-        .await?;
-
-    match response.status() {
-        StatusCode::OK => {
-            let response = response.json::<ChatCompletionResponse>().await?;
-            let result = &response.choices[0].message.content;
+    match crate::claude::send_message(
+        &request_client,
+        "claude-sonnet-4-20250514",
+        Some(SYSTEM_PROMPT),
+        channel_conversations,
+        4096,
+    )
+    .await
+    {
+        Ok(response) => {
+            let result = &response.content[0].text;
 
             check_msg(msg.channel_id.say(&ctx.http, result).await);
 
             speak(&ctx, &msg, result.to_string()).await?;
 
-            let ai_message = ChatMessage {
+            let ai_message = AnthropicMessage {
                 role: "assistant".to_string(),
                 content: result.to_string(),
             };
             channel_conversations.push(ai_message);
         }
-        _ => {
-            error!("Failed to send HTTP request");
-            return Err("HTTP request failed".into());
+        Err(e) => {
+            error!("Failed to call Claude API: {}", e);
+            return Err("Claude API request failed".into());
         }
     }
 
@@ -86,8 +71,8 @@ async fn speak(
     msg: &Message,
     result: String,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let speech_key = env::var("SPEECH_KEY").expect("token");
-    let speech_region = env::var("SPEECH_REGION").expect("token");
+    let speech_key = std::env::var("SPEECH_KEY").expect("token");
+    let speech_region = std::env::var("SPEECH_REGION").expect("token");
 
     let url = format!(
         "https://{}.tts.speech.microsoft.com/cognitiveservices/v1",
@@ -150,47 +135,8 @@ async fn speak(
     Ok(())
 }
 
-type ConversationHistory = Vec<ChatMessage>;
+type ConversationHistory = Vec<AnthropicMessage>;
 lazy_static! {
     static ref CONVERSATIONS: Mutex<HashMap<ChannelId, ConversationHistory>> =
         Mutex::new(HashMap::new());
-}
-
-#[derive(Serialize, Debug)]
-struct ChatCompletionRequest {
-    model: String,
-    messages: Vec<ChatMessage>,
-}
-
-#[derive(Serialize, Debug, Clone)]
-struct ChatMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Deserialize, Debug)]
-struct ChatCompletionResponse {
-    id: String,
-    object: String,
-    created: u64,
-    model: String,
-    usage: ChatCompletionUsage,
-    choices: Vec<ChatCompletionChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatCompletionUsage {
-    prompt_tokens: u64,
-    completion_tokens: u64,
-    total_tokens: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatCompletionChoice {
-    message: ChatResponseMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatResponseMessage {
-    content: String,
 }

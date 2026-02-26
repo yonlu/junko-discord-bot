@@ -1,4 +1,6 @@
+mod claude;
 mod commands;
+mod moderation;
 mod utils;
 
 use crate::commands::ask::*;
@@ -42,6 +44,31 @@ struct Handler;
 impl EventHandler for Handler {
     async fn ready(&self, _: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
+    }
+
+    async fn message(&self, ctx: Context, msg: Message) {
+        // Skip messages from bots (including this bot)
+        if msg.author.bot {
+            return;
+        }
+
+        // Skip command messages
+        if msg.content.starts_with('~') {
+            return;
+        }
+
+        // Skip empty messages (e.g., image-only)
+        if msg.content.trim().is_empty() {
+            return;
+        }
+
+        // Spawn moderation check as a background task
+        let http = ctx.http.clone();
+        tokio::spawn(async move {
+            if let Err(e) = moderation::moderate_message(&http, &msg).await {
+                tracing::error!("Moderation check failed for message {}: {}", msg.id, e);
+            }
+        });
     }
 }
 
