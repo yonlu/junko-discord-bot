@@ -14,7 +14,6 @@ use crate::commands::tts::*;
 
 use std::env;
 
-use songbird::Config;
 use songbird::SerenityInit;
 
 use serenity::{
@@ -23,7 +22,7 @@ use serenity::{
     framework::{
         standard::{
             macros::{command, group},
-            Args, CommandResult,
+            Configuration, Args, CommandResult,
         },
         StandardFramework,
     },
@@ -35,7 +34,6 @@ use serenity::{
     prelude::GatewayIntents,
 };
 
-use songbird::driver::DecodeMode;
 use tracing_subscriber;
 
 #[group]
@@ -116,9 +114,9 @@ impl EventHandler for Handler {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let framework = StandardFramework::new()
-        .configure(|c| c.prefix("~"))
-        .group(&GENERAL_GROUP);
+    let mut framework = StandardFramework::new();
+    framework.configure(Configuration::new().prefix("~"));
+    let framework = framework.group(&GENERAL_GROUP);
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
@@ -126,12 +124,10 @@ async fn main() {
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_VOICE_STATES;
 
-    let songbird_config = Config::default().decode_mode(DecodeMode::Decode);
-
     let mut client = Client::builder(token, intents)
         .event_handler(Handler)
         .framework(framework)
-        .register_songbird_from_config(songbird_config)
+        .register_songbird()
         .await
         .expect("Error creating client");
 
@@ -152,8 +148,7 @@ async fn main() {
 #[command]
 #[only_in(guilds)]
 async fn list(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
+    let guild_id = msg.guild(&ctx.cache).unwrap().id;
 
     let manager = songbird::get(ctx)
         .await

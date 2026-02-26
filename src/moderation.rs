@@ -101,7 +101,7 @@ pub async fn moderate_embeds(
     let answer = response.content[0].text.trim().to_uppercase();
 
     if answer.starts_with("YES") {
-        http.delete_message(channel_id.0, message_id.0).await?;
+        channel_id.delete_message(&http, message_id).await?;
         tracing::info!(
             "Deleted message with political embed (ID: {}): {}",
             message_id,

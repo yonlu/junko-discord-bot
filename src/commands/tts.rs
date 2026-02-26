@@ -64,23 +64,9 @@ pub async fn tts(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             if let Some(handler_lock) = manager.get(guild_id) {
                 let mut handler = handler_lock.lock().await;
 
-                match songbird::ffmpeg("./output.mp3").await {
-                    Ok(source) => {
-                        println!("Playing output.mp3 in the voice channel");
-                        let track_handle = handler.play_source(source.into());
-                        if let Err(e) = track_handle.play() {
-                            println!("Error during playback: {:?}", e);
-                        }
-                    }
-                    Err(e) => {
-                        println!("Error playing output.mp3: {:?}", e);
-                        check_msg(
-                            msg.channel_id
-                                .say(&ctx.http, "Error playing audio in the voice channel")
-                                .await,
-                        );
-                    }
-                }
+                let source = songbird::input::File::new("./output.mp3");
+                println!("Playing output.mp3 in the voice channel");
+                handler.play_input(source.into());
             } else {
                 println!("No handler found for the guild");
                 check_msg(

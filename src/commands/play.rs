@@ -9,7 +9,7 @@ use serenity::{
 };
 
 use songbird::{
-    input::restartable::Restartable, Event, EventContext, EventHandler as VoiceEventHandler,
+    input::YoutubeDl, Event, EventContext, EventHandler as VoiceEventHandler,
     TrackEvent,
 };
 
@@ -41,8 +41,7 @@ pub async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
         return Ok(());
     }
 
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
+    let guild_id = msg.guild(&ctx.cache).unwrap().id;
 
     let manager = songbird::get(ctx)
         .await
@@ -52,20 +51,13 @@ pub async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
-        // Here, we use lazy restartable sources to make sure that we don't pay
-        // for decoding, playback on tracks which aren't actually live yet.
-        let source = match Restartable::ytdl(url, true).await {
-            Ok(source) => source,
-            Err(why) => {
-                println!("Err starting source: {:?}", why);
+        println!("Attempting to create source for URL: {}", url);
+        let http_client = reqwest::Client::new();
+        let source = YoutubeDl::new(http_client, url);
 
-                check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
-
-                return Ok(());
-            }
-        };
-
-        let song = handler.enqueue_source(source.into());
+        let song = handler.enqueue_input(source.into()).await;
+        let track_state = song.get_info().await;
+        println!("Track state after enqueue: {:?}", track_state);
         let send_http = ctx.http.clone();
         let chan_id = msg.channel_id;
 
@@ -73,9 +65,15 @@ pub async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
             Event::Track(TrackEvent::End),
             SongEndNotifier {
                 chan_id,
-                http: send_http,
+                http: send_http.clone(),
             },
         );
+
+        let _ = song.add_event(
+            Event::Track(TrackEvent::Play),
+            SongPlayNotifier,
+        );
+
 
         check_msg(
             msg.channel_id
@@ -94,6 +92,16 @@ pub async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
     }
 
     Ok(())
+}
+
+struct SongPlayNotifier;
+
+#[async_trait]
+impl VoiceEventHandler for SongPlayNotifier {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        println!("[DEBUG] Track started playing!");
+        None
+    }
 }
 
 struct SongEndNotifier {

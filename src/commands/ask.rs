@@ -115,9 +115,9 @@ async fn speak(
             if let Some(handler_lock) = manager.get(guild_id) {
                 let mut handler = handler_lock.lock().await;
 
-                let source = songbird::ffmpeg("./output.mp3").await.unwrap();
+                let source = songbird::input::File::new("./output.mp3");
                 println!("Playing output.mp3 in the voice channel");
-                handler.play_source(source);
+                handler.play_input(source.into());
             } else {
                 println!("No handler found for the guild");
             }

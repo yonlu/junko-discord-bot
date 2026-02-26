@@ -6,21 +6,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-serenity = { version = "0.11", features = ["client", "standard_framework", "voice", "cache"]}
-tokio = { version = "1.21.2", features = ["full"] }
-youtube_dl = "0.8.0"
-futures = "0.3.17"
+serenity = { version = "0.12", features = ["client", "standard_framework", "voice", "cache"] }
+songbird = { version = "0.4", features = ["driver", "builtin-queue", "serenity"] }
+symphonia = { version = "0.5.2", default-features = false, features = ["mkv", "mp3", "ogg", "wav", "aac", "isomp4", "flac", "pcm"] }
+tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 lazy_static = "1.4.0"
-scraper = "0.12.0"
-select = "0.6.0"
-tracing = "0.1.37"
+scraper = "0.22"
+tracing = "0.1"
 tracing-subscriber = "0.3"
-chrono = "0.4.26"
-
-[dependencies.songbird]
-features = ["yt-dlp", "builtin-queue"]
-git = "https://github.com/Erk-/songbird/"
-branch = "do-not-fail-if-new-opcode"
+chrono = "0.4"
