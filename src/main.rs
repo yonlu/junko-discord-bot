@@ -27,7 +27,11 @@ use serenity::{
         },
         StandardFramework,
     },
-    model::{channel::Message, gateway::Ready},
+    model::{
+        channel::Message,
+        event::MessageUpdateEvent,
+        gateway::Ready,
+    },
     prelude::GatewayIntents,
 };
 
@@ -67,6 +71,42 @@ impl EventHandler for Handler {
         tokio::spawn(async move {
             if let Err(e) = moderation::moderate_message(&http, &msg).await {
                 tracing::error!("Moderation check failed for message {}: {}", msg.id, e);
+            }
+        });
+    }
+
+    async fn message_update(
+        &self,
+        ctx: Context,
+        _old: Option<Message>,
+        _new: Option<Message>,
+        event: MessageUpdateEvent,
+    ) {
+        // Only moderate when embeds are added
+        let embeds = match &event.embeds {
+            Some(embeds) if !embeds.is_empty() => embeds.clone(),
+            _ => return,
+        };
+
+        // Skip bot messages
+        if let Some(author) = &event.author {
+            if author.bot {
+                return;
+            }
+        }
+
+        let http = ctx.http.clone();
+        let channel_id = event.channel_id;
+        let message_id = event.id;
+        tokio::spawn(async move {
+            if let Err(e) =
+                moderation::moderate_embeds(&http, channel_id, message_id, &embeds).await
+            {
+                tracing::error!(
+                    "Embed moderation check failed for message {}: {}",
+                    message_id,
+                    e
+                );
             }
         });
     }
